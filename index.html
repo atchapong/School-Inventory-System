@@ -1,0 +1,2058 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Inventory</title>
+
+    <!-- CSS Framework -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Kanit', 'sans-serif'] },
+                    colors: {
+                        primary: 'var(--theme-primary)',
+                        primaryHover: 'var(--theme-hover)',
+                        surface: 'var(--theme-light)',
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- React Libraries -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/prop-types/prop-types.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.js"></script>
+
+    <!-- Lucide Icons (Latest Version) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        /* Global Styles */
+        body {
+            font-family: 'Kanit', sans-serif;
+            @apply bg-gray-50 text-gray-800;
+        }
+
+        .dark body {
+            @apply bg-gray-900 text-gray-100;
+        }
+
+        /* Transitions */
+        .transition-all {
+            transition-property: all;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 300ms;
+        }
+
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 20px;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #475569;
+        }
+
+        /* Glass Effect */
+        .glass {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .dark .glass {
+            background: rgba(17, 24, 39, 0.8);
+        }
+
+        @media (hover: none) {
+            .group:active .group-hover\\:block {
+                display: block;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- Robust Icon Component (Ultra Stable Version) ---
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const [svgHtml, setSvgHtml] = useState(null);
+
+            useEffect(() => {
+                if (window.lucide) {
+                    const { icons, createElement } = window.lucide;
+
+                    // Helper to Convert kebab-case to PascalCase
+                    const toPascalCase = (str) =>
+                        str.replace(/(^\w|-\w)/g, (text) => text.replace(/-/, "").toUpperCase());
+
+                    const pascalName = toPascalCase(name);
+                    const iconNode = icons[pascalName] || icons[name];
+
+                    if (iconNode) {
+                        try {
+                            // Create DOM element and extract HTML string (Most reliable method for CDN)
+                            const element = createElement(iconNode);
+                            element.setAttribute('width', size);
+                            element.setAttribute('height', size);
+
+                            // Append custom classes
+                            if (className) {
+                                const existingClass = element.getAttribute('class') || '';
+                                element.setAttribute('class', `${existingClass} ${className}`);
+                            }
+
+                            setSvgHtml(element.outerHTML);
+                        } catch (e) {
+                            console.warn("Icon render error:", e);
+                        }
+                    }
+                }
+            }, [name, size, className]);
+
+            if (!svgHtml) {
+                // Fallback placeholder while loading or if failed
+                return <span className={`inline-block bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse`} style={{ width: size, height: size }}></span>;
+            }
+
+            return <span dangerouslySetInnerHTML={{ __html: svgHtml }} className="inline-flex items-center justify-center" />;
+        };
+
+        // --- CONSTANTS ---
+        const THEMES = {
+            teal: { name: 'Teal', primary: '#0d9488', hover: '#0f766e', light: '#f0fdfa', border: '#99f6e4' },
+            blue: { name: 'Blue', primary: '#2563eb', hover: '#1d4ed8', light: '#eff6ff', border: '#bfdbfe' },
+            purple: { name: 'Purple', primary: '#9333ea', hover: '#7e22ce', light: '#faf5ff', border: '#e9d5ff' },
+            orange: { name: 'Orange', primary: '#ea580c', hover: '#c2410c', light: '#fff7ed', border: '#fed7aa' },
+            pink: { name: 'Pink', primary: '#db2777', hover: '#be185d', light: '#fdf2f8', border: '#fbcfe8' }
+        };
+
+        const COLORS = { primary: '#26A69A', warning: '#FFCA28', danger: '#EF5350', success: '#66BB6A' };
+
+        // --- UTILS ---
+        const formatCurrency = (val) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(val);
+        const formatDate = (dateObj) => {
+            if (!dateObj) return '-';
+            const d = dateObj.seconds ? new Date(dateObj.seconds * 1000) : new Date(dateObj);
+            return isNaN(d) ? '-' : d.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+        };
+
+        // --- APP COMPONENT ---
+        function App() {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [currentPage, setCurrentPage] = useState('login');
+            const [sidebarOpen, setSidebarOpen] = useState(true);
+            const [data, setData] = useState({ inventory: [], requests: [], users: [], settings: {} });
+            const [alert, setAlert] = useState({ isOpen: false });
+            const [schoolNameLive, setSchoolNameLive] = useState(data.settings?.schoolName || '');
+            const [logoLive, setLogoLive] = useState(data.settings?.logoUrl || '');
+
+            // --- DATA LOADING ---
+            const loadData = () => {
+                setLoading(true);
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run.withSuccessHandler((jsonString) => {
+                        try {
+                            const serverData = JSON.parse(jsonString);
+                            if (serverData.error) {
+                                alertObj('System Error', serverData.error, 'error');
+                                setLoading(false);
+                                return;
+                            }
+                            const safeData = {
+                                inventory: serverData.inventory || [],
+                                requests: serverData.requests || [],
+                                users: serverData.users || [],
+                                settings: serverData.settings || {}
+                            };
+                            console.log(safeData);
+                            console.log(typeof serverData.settings);
+                            setData(safeData);
+                            const s = safeData.settings || {};
+                            applyTheme(s.theme, s.darkMode);
+                        } catch (e) {
+                            console.error("JSON Parse Error:", e);
+                            alertObj('Data Error', 'ได้รับข้อมูลผิดพลาดจาก Server', 'error');
+                        }
+                        setLoading(false);
+                    }).withFailureHandler((err) => {
+                        alertObj('Error', 'ไม่สามารถโหลดข้อมูลได้: ' + err, 'error');
+                        setLoading(false);
+                    }).getData();
+                } else {
+                    // MOCK DATA FOR PREVIEW
+                    console.warn('Mock Data Mode');
+                    const mockData = {
+                        inventory: [
+                            { id: '1', code: 'P001', name: 'กระดาษ A4', unit: 'รีม', price: 120, quantity: 100, min_quantity: 10 },
+                            { id: '2', code: 'P002', name: 'ปากกาแดง', unit: 'ด้าม', price: 15, quantity: 50, min_quantity: 5 },
+                            { id: '3', code: 'P003', name: 'น้ำยาลบคำผิด', unit: 'อัน', price: 35, quantity: 3, min_quantity: 5 }
+                        ],
+                        requests: [
+                            { id: 'r1', userId: 'u2', userName: 'ครูสมศรี', department: 'ภาษาไทย', items: [{ itemId: '1', name: 'กระดาษ A4', qty: 2, unit: 'รีม' }], reason: 'ใช้ประกอบการสอน', status: 'pending', date: { seconds: Date.now() / 1000 } }
+                        ],
+                        users: [
+                            { id: 'u1', username: 'admin', password: '1234', name: 'Admin Demo', role: 'admin', department: 'IT' },
+                            { id: 'u2', username: 'teacher', password: '1234', name: 'ครูสมศรี', role: 'teacher', department: 'ภาษาไทย' }
+                        ],
+                        settings: { schoolName: 'โรงเรียนตัวอย่าง (Preview)', theme: 'teal', darkMode: 'system' }
+                    };
+                    setTimeout(() => {
+                        setData(mockData);
+                        const s = mockData.settings || {};
+                        applyTheme(s.theme, s.darkMode);
+                        setLoading(false);
+                    }, 800);
+                }
+            };
+
+            useEffect(() => { loadData(); }, []);
+
+            // Apply theme whenever settings change
+            useEffect(() => {
+                if (data.settings) {
+                    applyTheme(data.settings.theme, data.settings.darkMode);
+                }
+            }, [data.settings]);
+            // Fetch data on tab change
+            React.useEffect(() => {
+                if (!user) return;
+
+                const fetchData = async () => {
+                    // Don't show full screen loading, maybe just a small indicator or nothing (seamless)
+                    // But to be safe and show feedback, let's use a small delay or just set loading if it takes too long
+                    // For now, let's just run it.
+
+                    try {
+                        if (currentPage === 'inventory') {
+                            if (typeof google !== 'undefined' && google.script) {
+                                google.script.run.withSuccessHandler(inv => {
+                                    setData(prev => ({ ...prev, inventory: inv }));
+                                }).getInventoryData();
+                            }
+                        } else if (currentPage === 'requests') {
+                            if (typeof google !== 'undefined' && google.script) {
+                                google.script.run.withSuccessHandler(req => {
+                                    setData(prev => ({ ...prev, requests: req }));
+                                }).getRequestsData();
+                            }
+                        } else if (currentPage === 'users') {
+                            if (typeof google !== 'undefined' && google.script) {
+                                google.script.run.withSuccessHandler(usrs => {
+                                    setData(prev => ({ ...prev, users: usrs }));
+                                }).getUsersData();
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Fetch error:", e);
+                    }
+                };
+
+                fetchData();
+            }, [currentPage, user]);
+
+            // --- THEME & STYLE ---
+            function applyTheme(themeKey = 'teal', mode = 'system') {
+                const theme = THEMES[themeKey] || THEMES.teal;
+                document.documentElement.style.setProperty('--theme-primary', theme.primary);
+                document.documentElement.style.setProperty('--theme-hover', theme.hover);
+                document.documentElement.style.setProperty('--theme-light', theme.light);
+                document.documentElement.style.setProperty('--theme-border', theme.border);
+                const isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                if (isDark) document.documentElement.classList.add('dark');
+                else document.documentElement.classList.remove('dark');
+            }
+
+            const alertObj = (title, text, type, onConfirm) => {
+                setAlert({ isOpen: true, title, text, type, onConfirm, onCancel: () => setAlert({ isOpen: false }) });
+            };
+
+            const handleLogin = (username, password, setError) => {
+                setLoading(true);
+                // Simple Local Check
+                const target = data.users.find(u => u.username === username && u.password == password);
+                if (target) {
+                    setTimeout(() => {
+                        setUser(target);
+                        setCurrentPage('dashboard');
+                        setLoading(false);
+                        alertObj('สำเร็จ', `ยินดีต้อนรับ ${target.name}`, 'success');
+                    }, 500);
+                } else {
+                    setTimeout(() => {
+                        setLoading(false);
+                        if (setError) {
+                            setError('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง');
+                        }
+                        alertObj('เข้าสู่ระบบไม่สำเร็จ', 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง', 'error');
+                    }, 500);
+                }
+            };
+
+            const handleLogout = () => { setUser(null); setCurrentPage('login'); };
+
+            // Render Logic
+            if (loading && !user && currentPage === 'login') return <LoadingScreen />;
+            if (!user) return <LoginPage onLogin={handleLogin} settings={data.settings} alert={alert} setAlert={setAlert} />;
+
+            const isAdmin = user.role === 'admin';
+            const menuItems = isAdmin ? [
+                { id: 'dashboard', label: 'ภาพรวม', icon: 'pie-chart' },
+                { id: 'users', label: 'ผู้ใช้งาน', icon: 'users' },
+                { id: 'inventory', label: 'จัดการพัสดุ', icon: 'package' },
+                { id: 'low-stock', label: 'พัสดุใกล้หมด', icon: 'alert-triangle' },
+                { id: 'requests', label: 'รายการเบิก', icon: 'file-text' },
+                { id: 'account', label: 'บัญชีพัสดุ', icon: 'file-text' },
+                { id: 'settings', label: 'ตั้งค่า', icon: 'settings' },
+            ] : [
+                { id: 'dashboard', label: 'หน้าหลัก', icon: 'home' },
+                { id: 'withdraw', label: 'ขอเบิกพัสดุ', icon: 'shopping-cart' },
+                { id: 'my-requests', label: 'ประวัติการเบิก', icon: 'clock' },
+                { id: 'profile', label: 'ข้อมูลส่วนตัว', icon: 'user' },
+            ];
+
+            return (
+                <div className="flex h-screen bg-gray-50 dark:bg-gray-900 font-kanit overflow-hidden transition-colors duration-300 text-gray-800 dark:text-gray-100">
+                    {loading && <LoadingScreen />}
+                    <SweetAlert {...alert} />
+
+                    {/* Sidebar */}
+                    <aside className={`glass border-r border-gray-200 dark:border-gray-700 z-20 transition-all duration-300 flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} hidden md:flex shadow-xl`}>
+                        <div className="p-5 flex items-center justify-between border-b border-gray-100 dark:border-gray-700">
+                            <div className={`flex items-center gap-3 text-primary font-bold text-xl ${!sidebarOpen && 'justify-center'}`}>
+                                {data.settings.logoBase64 ? (
+                                    <img src={data.settings.logoBase64} alt="Logo" className="w-10 h-10 object-contain rounded-lg bg-white p-1 shadow-sm" />
+                                ) : (
+                                    <div className="p-2 bg-surface rounded-xl"><Icon name="package" size={24} className="text-primary" /></div>
+                                )}
+                                {sidebarOpen && <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600">{data.settings.schoolName || 'Smart Stock'}</span>}
+                            </div>
+                            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 transition-colors">
+                                <Icon name={sidebarOpen ? 'chevron-left' : 'chevron-right'} size={20} />
+                            </button>
+                        </div>
+                        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
+                            {menuItems.map(m => (
+                                <button key={m.id} onClick={() => setCurrentPage(m.id)}
+                                    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 group ${currentPage === m.id ? 'bg-primary text-white shadow-lg shadow-primary/30' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                                    <Icon name={m.icon} size={20} className={currentPage !== m.id ? "group-hover:scale-110 transition-transform" : ""} />
+                                    {sidebarOpen && <span className="font-medium">{m.label}</span>}
+                                </button>
+                            ))}
+                        </nav>
+                        <div className="p-4 border-t border-gray-100 dark:border-gray-700">
+                            <button onClick={handleLogout} className="flex items-center gap-3 text-danger w-full p-3 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors">
+                                <Icon name="log-out" size={20} /> {sidebarOpen && <span className="font-medium">ออกจากระบบ</span>}
+                            </button>
+                        </div>
+                    </aside>
+
+                    {/* Main */}
+                    <main className="flex-1 flex flex-col relative overflow-hidden bg-gray-50/50 dark:bg-gray-900">
+                        {/* Header Mobile */}
+                        <header className="md:hidden glass p-4 shadow-sm flex justify-between items-center z-20">
+                            <div className="font-bold text-primary flex items-center gap-2 text-lg">
+                                {data.settings.logoBase64 ? (
+                                    <img src={data.settings.logoBase64} alt="Logo" className="w-8 h-8 object-contain rounded-lg bg-white p-0.5 shadow-sm" />
+                                ) : (
+                                    <Icon name="package" size={24} />
+                                )}
+                                {data.settings.schoolName || 'Smart Stock'}
+                            </div>
+                            <div className="flex gap-3">
+                                <button onClick={loadData} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><Icon name="refresh-cw" size={20} className="text-gray-500" /></button>
+                                <button onClick={handleLogout} className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"><Icon name="log-out" size={20} className="text-danger" /></button>
+                            </div>
+                        </header>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-y-auto p-4 pb-24 md:pb-4 md:p-8 custom-scrollbar">
+                            <div className="max-w-7xl mx-auto space-y-6">
+                                {currentPage === 'dashboard' && <Dashboard user={user} data={data} isAdmin={isAdmin} reload={loadData} alert={alertObj} />}
+                                {currentPage === 'inventory' && isAdmin && <InventoryManager data={data} setData={setData} reload={loadData} alert={alertObj} />}
+                                {currentPage === 'requests' && isAdmin && <RequestManager data={data} setData={setData} reload={loadData} alert={alertObj} />}
+                                {currentPage === 'users' && isAdmin && <UserManager data={data} setData={setData} reload={loadData} alert={alertObj} />}
+                                {currentPage === 'settings' && isAdmin && <SettingsPage data={data} setData={setData} reload={loadData} alert={alertObj} />}
+                                {currentPage === 'withdraw' && !isAdmin && <WithdrawForm user={user} data={data} setData={setData} reload={loadData} alert={alertObj} onFinish={() => setCurrentPage('my-requests')} />}
+                                {currentPage === 'my-requests' && !isAdmin && <MyRequests user={user} data={data} />}
+                                {currentPage === 'profile' && !isAdmin && <ProfilePage user={user} />}
+                                {currentPage === 'low-stock' && isAdmin && <LowStockManager data={data} setData={setData} reload={loadData} alert={alertObj} />}
+                                {currentPage === 'account' && isAdmin && <InventoryAccountManager data={data} reload={loadData} alert={alertObj} />}
+                            </div>
+                        </div>
+
+                        {/* Mobile Nav */}
+                        <div className="md:hidden fixed bottom-0 left-0 right-0 glass border-t border-gray-200 dark:border-gray-700 flex justify-around p-2 z-40 pb-safe">
+                            {/* First 3 main items */}
+                            {menuItems.slice(0, 3).map(m => (
+                                <button
+                                    key={m.id}
+                                    onClick={() => setCurrentPage(m.id)}
+                                    className={`flex flex-col items-center justify-center p-2 rounded-xl w-16 transition-all ${currentPage === m.id ? 'text-primary bg-primary/10' : 'text-gray-400'}`}
+                                >
+                                    <Icon name={m.icon} size={24} />
+                                    <span className="text-xs mt-1">{m.label}</span>
+                                </button>
+                            ))}
+
+                            {/* More button for additional items */}
+                            <div className="relative group">
+                                <button
+                                    className="flex flex-col items-center justify-center p-2 rounded-xl w-16 text-gray-400 hover:text-primary transition-colors"
+                                >
+                                    <Icon name="more-horizontal" size={24} />
+                                    <span className="text-xs">เพิ่มเติม</span>
+                                </button>
+
+                                {/* Dropdown menu */}
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl p-2 hidden group-hover:block border border-gray-100 dark:border-gray-700">
+                                    {menuItems.slice(3).map(m => (
+                                        <button
+                                            key={m.id}
+                                            onClick={() => {
+                                                setCurrentPage(m.id);
+                                                // Close dropdown after selection
+                                                document.activeElement.blur();
+                                            }}
+                                            className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${currentPage === m.id
+                                                ? 'bg-primary/10 text-primary'
+                                                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                }`}
+                                        >
+                                            <Icon name={m.icon} size={18} />
+                                            {m.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        // --- SUB COMPONENTS ---
+
+        const Dashboard = ({ user, data, isAdmin, reload, alert }) => {
+            const [aiResult, setAiResult] = useState(null);
+            const [aiLoading, setAiLoading] = useState(false);
+            const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } = window.Recharts || {};
+
+            const handleAI = () => {
+                setAiLoading(true);
+                const prompt = `วิเคราะห์ข้อมูลพัสดุ: มีทั้งหมด ${data.inventory.length} รายการ, ใกล้หมด ${data.inventory.filter(i => i.quantity <= i.min_quantity).length} รายการ. ขอคำแนะนำสั้นๆ สำหรับผู้บริหารโรงเรียน`;
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run.withSuccessHandler(res => { setAiResult(res); setAiLoading(false); }).callGeminiAPI(prompt);
+                } else {
+                    setTimeout(() => { setAiResult("ระบบ AI ไม่พร้อมใช้งานในโหมดทดสอบ Local"); setAiLoading(false); }, 1000);
+                }
+            };
+
+            const lowStock = data.inventory.filter(i => i.quantity <= i.min_quantity).length;
+            const pending = data.requests.filter(r => r.status === 'pending').length;
+
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700">
+                        <div>
+                            <h2 className="text-3xl font-bold text-gray-800 dark:text-white mb-1">สวัสดี, {user.name} 👋</h2>
+                            <p className="text-gray-500 dark:text-gray-400">ยินดีต้อนรับสู่ระบบบริหารพัสดุอัจฉริยะ</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={reload} className="p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 transition-colors"><Icon name="refresh-cw" size={20} /></button>
+                            {isAdmin && <button onClick={handleAI} className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-3 rounded-xl shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all transform hover:-translate-y-0.5 font-medium"><Icon name="sparkles" size={20} /> วิเคราะห์ AI</button>}
+                        </div>
+                    </div>
+
+                    {aiLoading && (
+                        <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 p-6 rounded-2xl text-purple-700 dark:text-purple-300 text-center animate-pulse flex flex-col items-center gap-3">
+                            <Icon name="loader-2" size={32} className="animate-spin" />
+                            <span>Gemini AI กำลังวิเคราะห์ข้อมูลของคุณ...</span>
+                        </div>
+                    )}
+
+                    {aiResult && (
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-lg border border-purple-100 dark:border-purple-900/30 relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-purple-500 to-indigo-500"></div>
+                            <h3 className="font-bold flex items-center gap-2 text-purple-600 mb-3 text-lg"><Icon name="brain-circuit" size={24} /> ผลการวิเคราะห์จาก AI</h3>
+                            <p className="whitespace-pre-line leading-relaxed text-gray-600 dark:text-gray-300">{aiResult}</p>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <StatBox title="พัสดุทั้งหมด" value={data.inventory.length} color="bg-blue-500" icon="package" />
+                        <StatBox title={isAdmin ? "รออนุมัติ" : "คำขอของฉัน"} value={isAdmin ? pending : data.requests.filter(r => r.userId === user.id).length} color="bg-yellow-500" icon="file-text" />
+                        <StatBox title="พัสดุใกล้หมด" value={lowStock} color="bg-red-500" icon="alert-triangle" />
+                        <StatBox title="ผู้ใช้งาน" value={data.users.length} color="bg-green-500" icon="users" />
+                    </div>
+                    {isAdmin && (
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <div className="bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col h-80">
+                                <h3 className="font-bold mb-6 text-gray-800 dark:text-white text-lg flex items-center gap-2"><Icon name="pie-chart" className="text-primary" /> สถานะการเบิก</h3>
+                                <div className="flex-1 w-full relative">
+                                    {PieChart ? (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie data={[
+                                                    { name: 'อนุมัติ', value: data.requests.filter(r => r.status === 'approved').length },
+                                                    { name: 'รออนุมัติ', value: pending },
+                                                    { name: 'ปฏิเสธ', value: data.requests.filter(r => r.status === 'rejected').length }
+                                                ]} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                                    {[COLORS.primary, COLORS.warning, COLORS.danger].map((c, i) => <Cell key={i} fill={c} strokeWidth={0} />)}
+                                                </Pie>
+                                                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    ) : <div className="h-full flex items-center justify-center text-gray-400">กำลังโหลดกราฟ...</div>}
+                                </div>
+                            </div>
+
+                            <div className="bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 h-80 flex flex-col">
+                                <h3 className="font-bold mb-4 text-red-500 flex items-center gap-2 text-lg"><Icon name="alert-circle" /> สินค้าใกล้หมดสต็อก</h3>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="text-gray-400 sticky top-0 bg-white dark:bg-gray-800">
+                                            <tr><th className="pb-3 pl-2">รายการ</th><th className="pb-3 text-right pr-2">คงเหลือ</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                            {data.inventory.filter(i => i.quantity <= i.min_quantity).length === 0 ? (
+                                                <tr><td colSpan="2" className="text-center py-10 text-gray-400">ไม่มีรายการใกล้หมด</td></tr>
+                                            ) : (
+                                                data.inventory.filter(i => i.quantity <= i.min_quantity).map(i => (
+                                                    <tr key={i.id} className="group hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
+                                                        <td className="py-3 pl-2 font-medium text-gray-700 dark:text-gray-300 group-hover:text-red-600">{i.name}</td>
+                                                        <td className="py-3 pr-2 text-right">
+                                                            <span className="bg-red-100 text-red-600 py-1 px-3 rounded-full text-xs font-bold">{i.quantity} {i.unit}</span>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            )
+        };
+
+        const StatBox = ({ title, value, icon, color }) => (
+            <div className="bg-white dark:bg-gray-800 p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-5 hover:shadow-md transition-shadow cursor-default">
+                <div className={`p-4 rounded-2xl text-white shadow-lg ${color} bg-opacity-90`}>
+                    <Icon name={icon} size={28} strokeWidth={2.5} />
+                </div>
+                <div>
+                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</div>
+                    <div className="text-3xl font-bold text-gray-800 dark:text-white">{value}</div>
+                </div>
+            </div>
+        );
+
+        // ... (Other Components - Logic remains same, Styling updated for consistency) ...
+        // InventoryManager, RequestManager, etc. with improved table styles and inputs.
+
+        const InventoryManager = ({ data, setData, reload, alert }) => {
+            const [editItem, setEditItem] = useState(null);
+            const [modalOpen, setModalOpen] = useState(false);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [deletingId, setDeletingId] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [page, setPage] = useState(1);
+            const [pageSize, setPageSize] = useState(10);
+
+            const handleSave = (e) => {
+                e.preventDefault();
+                setIsSubmitting(true);
+                const form = e.target;
+                const item = {
+                    id: editItem ? editItem.id : null,
+                    code: form.code.value,
+                    name: form.name.value,
+                    unit: form.unit.value,
+                    price: Number(form.price.value),
+                    quantity: Number(form.quantity.value),
+                    min_quantity: Number(form.min_quantity.value)
+                };
+
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run.withSuccessHandler((res) => {
+                        const savedItem = JSON.parse(res);
+                        setData(prev => {
+                            const exists = prev.inventory.some(i => i.id === savedItem.id);
+                            return {
+                                ...prev,
+                                inventory: exists
+                                    ? prev.inventory.map(i => i.id === savedItem.id ? savedItem : i)
+                                    : [...prev.inventory, savedItem]
+                            };
+                        });
+                        setIsSubmitting(false);
+                        setModalOpen(false);
+                        alert('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
+                    }).withFailureHandler((err) => {
+                        setIsSubmitting(false);
+                        alert('ผิดพลาด', err.toString(), 'error');
+                    }).saveInventoryItem(item);
+                } else {
+                    setTimeout(() => {
+                        setIsSubmitting(false);
+                        alert('จำลอง', 'ระบบจำลองการบันทึก (Simulation)', 'success', () => { setModalOpen(false); reload(); });
+                    }, 1000);
+                }
+            };
+
+            const handleDelete = (id) => {
+                alert('ยืนยัน', 'ต้องการลบรายการนี้?', 'warning', () => {
+                    setDeletingId(id);
+                    if (typeof google !== 'undefined' && google.script) {
+                        google.script.run.withSuccessHandler(() => {
+                            setData(prev => ({
+                                ...prev,
+                                inventory: prev.inventory.filter(i => i.id !== id)
+                            }));
+                            setDeletingId(null);
+                            alert('สำเร็จ', 'ลบข้อมูลแล้ว', 'success');
+                        }).withFailureHandler((err) => {
+                            setDeletingId(null);
+                            alert('ผิดพลาด', err.toString(), 'error');
+                        }).deleteInventoryItem(id);
+                    } else {
+                        setTimeout(() => {
+                            setDeletingId(null);
+                            alert('จำลอง', 'ระบบจำลองการลบ (Simulation)', 'success', reload);
+                        }, 1000);
+                    }
+                });
+            };
+
+            const filteredInventory = (data.inventory || []).filter(i => {
+                if (!searchTerm.trim()) return true;
+                const q = searchTerm.toLowerCase();
+                return (
+                    (i.code || '').toLowerCase().includes(q) ||
+                    (i.name || '').toLowerCase().includes(q) ||
+                    (i.unit || '').toLowerCase().includes(q)
+                );
+            });
+
+            const totalItems = filteredInventory.length;
+            const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+            const currentPage = Math.min(page, totalPages);
+            const startIndex = (currentPage - 1) * pageSize;
+            const pagedInventory = filteredInventory.slice(startIndex, startIndex + pageSize);
+
+            const handleChangePageSize = (e) => {
+                const value = Number(e.target.value) || 10;
+                setPageSize(value);
+                setPage(1);
+            };
+
+            const handleSearchChange = (e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">📦 จัดการพัสดุ</h2>
+                        <button onClick={() => { setEditItem(null); setModalOpen(true); }} className="bg-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 transition-all font-medium">
+                            <Icon name="plus" size={20} /> เพิ่มพัสดุ
+                        </button>
+                    </div>
+
+                    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                        {/* Filters */}
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 pt-4 pb-2">
+                            <div className="flex items-center gap-2 w-full md:w-72">
+                                <div className="relative flex-1">
+                                    <span className="absolute inset-y-0 left-3 flex items-center text-gray-400">
+                                        <Icon name="search" size={16} />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={searchTerm}
+                                        onChange={handleSearchChange}
+                                        placeholder="ค้นหาด้วยรหัส / ชื่อพัสดุ / หน่วยนับ"
+                                        className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm focus:ring-2 focus:ring-primary outline-none text-gray-700 dark:text-gray-100"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between md:justify-end gap-3 text-xs text-gray-500 dark:text-gray-400">
+                                <div>
+                                    แสดง {(totalItems === 0 ? 0 : startIndex + 1)} - {Math.min(startIndex + pageSize, totalItems)} จาก {totalItems} รายการ
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span>แถวต่อหน้า</span>
+                                    <select
+                                        value={pageSize}
+                                        onChange={handleChangePageSize}
+                                        className="border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 rounded-lg px-2 py-1 text-xs focus:ring-1 focus:ring-primary outline-none"
+                                    >
+                                        <option value={10}>10</option>
+                                        <option value={20}>20</option>
+                                        <option value={50}>50</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase tracking-wider border-y dark:border-gray-700">
+                                    <tr><th className="p-4 pl-6 font-semibold">รหัส</th><th className="p-4 font-semibold">ชื่อพัสดุ</th><th className="p-4 text-center font-semibold">คงเหลือ</th><th className="p-4 text-right font-semibold">ราคา/หน่วย</th><th className="p-4 text-center font-semibold">จัดการ</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                    {pagedInventory.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" className="p-6 text-center text-gray-400">ไม่พบข้อมูลที่ค้นหา</td>
+                                        </tr>
+                                    ) : (
+                                        pagedInventory.map(i => (
+                                            <tr key={i.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
+                                                <td className="p-4 pl-6 font-mono text-gray-500">{i.code}</td>
+                                                <td className="p-4 font-medium text-gray-800 dark:text-gray-200">{i.name}</td>
+                                                <td className="p-4 text-center">
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${i.quantity <= i.min_quantity ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'}`}>
+                                                        {i.quantity} {i.unit}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-right text-gray-600">{formatCurrency(i.price)}</td>
+                                                <td className="p-4 flex justify-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => { setEditItem(i); setModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg"><Icon name="edit-2" size={18} /></button>
+                                                    <button onClick={() => handleDelete(i.id)} disabled={deletingId === i.id} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50">
+                                                        {deletingId === i.id ? <Icon name="loader-2" size={18} className="animate-spin" /> : <Icon name="trash-2" size={18} />}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination Controls */}
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+                            <div>
+                                หน้า {currentPage} / {totalPages}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 disabled:opacity-40 flex items-center gap-1"
+                                >
+                                    <Icon name="chevron-left" size={14} /> ก่อนหน้า
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 disabled:opacity-40 flex items-center gap-1"
+                                >
+                                    ถัดไป <Icon name="chevron-right" size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {modalOpen && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+                            <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl w-full max-w-lg shadow-2xl transform transition-all scale-100">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="font-bold text-2xl dark:text-white flex items-center gap-2">
+                                        <Icon name={editItem ? 'edit' : 'package-plus'} className="text-primary" /> {editItem ? 'แก้ไขพัสดุ' : 'เพิ่มพัสดุใหม่'}
+                                    </h3>
+                                    <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><Icon name="x" size={24} /></button>
+                                </div>
+                                <form onSubmit={handleSave} className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">รหัส</label>
+                                            <input name="code" defaultValue={editItem?.code} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">หน่วยนับ</label>
+                                            <input name="unit" defaultValue={editItem?.unit} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ชื่อพัสดุ</label>
+                                        <input name="name" defaultValue={editItem?.name} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ราคา</label>
+                                            <input name="price" type="number" defaultValue={editItem?.price} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">จำนวน</label>
+                                            <input name="quantity" type="number" defaultValue={editItem?.quantity} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ขั้นต่ำ</label>
+                                            <input name="min_quantity" type="number" defaultValue={editItem?.min_quantity} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
+                                        <button type="button" onClick={() => setModalOpen(false)} className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors">ยกเลิก</button>
+                                        <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 bg-primary hover:bg-primaryHover text-white rounded-xl shadow-lg shadow-primary/30 font-medium transition-all disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center gap-2 justify-center">
+                                            {isSubmitting && <Icon name="loader-2" size={20} className="animate-spin" />}
+                                            {!isSubmitting ? 'บันทึก' : 'กำลังบันทึก...'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const LowStockManager = ({ data, setData, reload, alert }) => {
+            const [editItem, setEditItem] = useState(null);
+            const [modalOpen, setModalOpen] = useState(false);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [deletingId, setDeletingId] = useState(null);
+
+            // กรองเฉพาะใกล้หมด
+            const lowStockItems = (data.inventory || []).filter(i => i.quantity <= i.min_quantity);
+
+            const handleSave = (e) => {
+                e.preventDefault();
+                setIsSubmitting(true);
+                const form = e.target;
+                const item = {
+                    id: editItem ? editItem.id : null,
+                    code: form.code.value,
+                    name: form.name.value,
+                    unit: form.unit.value,
+                    price: Number(form.price.value),
+                    quantity: Number(form.quantity.value),
+                    min_quantity: Number(form.min_quantity.value)
+                };
+
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run
+                        .withSuccessHandler((res) => {
+                            const savedItem = JSON.parse(res);
+                            setData(prev => {
+                                const exists = prev.inventory.some(i => i.id === savedItem.id);
+                                return {
+                                    ...prev,
+                                    inventory: exists
+                                        ? prev.inventory.map(i => i.id === savedItem.id ? savedItem : i)
+                                        : [...prev.inventory, savedItem]
+                                };
+                            });
+                            setIsSubmitting(false);
+                            setModalOpen(false);
+                            alert('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
+                        })
+                        .withFailureHandler((err) => {
+                            setIsSubmitting(false);
+                            alert('ผิดพลาด', err.toString(), 'error');
+                        })
+                        .saveInventoryItem(item);
+                } else {
+                    setTimeout(() => {
+                        setIsSubmitting(false);
+                        alert('จำลอง', 'ระบบจำลองการบันทึก (Simulation)', 'success', () => { setModalOpen(false); reload(); });
+                    }, 1000);
+                }
+            };
+
+            const handleDelete = (id) => {
+                alert('ยืนยัน', 'ต้องการลบรายการนี้?', 'warning', () => {
+                    setDeletingId(id);
+                    if (typeof google !== 'undefined' && google.script) {
+                        google.script.run
+                            .withSuccessHandler(() => {
+                                setData(prev => ({
+                                    ...prev,
+                                    inventory: prev.inventory.filter(i => i.id !== id)
+                                }));
+                                setDeletingId(null);
+                                alert('สำเร็จ', 'ลบข้อมูลแล้ว', 'success');
+                            })
+                            .withFailureHandler((err) => {
+                                setDeletingId(null);
+                                alert('ผิดพลาด', err.toString(), 'error');
+                            })
+                            .deleteInventoryItem(id);
+                    } else {
+                        setTimeout(() => {
+                            setDeletingId(null);
+                            alert('จำลอง', 'ระบบจำลองการลบ (Simulation)', 'success', reload);
+                        }, 1000);
+                    }
+                });
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">⚠️ พัสดุใกล้หมด / หมดสต็อก</h2>
+                        <button onClick={() => { setEditItem(null); setModalOpen(true); }} className="bg-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 transition-all font-medium">
+                            <Icon name="plus" size={20} /> เพิ่มพัสดุ
+                        </button>
+                    </div>
+
+                    {lowStockItems.length === 0 ? (
+                        <div className="p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 text-center text-gray-400">
+                            ไม่มีรายการใกล้หมดสต็อก
+                        </div>
+                    ) : (
+                        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b dark:border-gray-700">
+                                    <tr>
+                                        <th className="p-4 pl-6 font-semibold">รหัส</th>
+                                        <th className="p-4 font-semibold">ชื่อพัสดุ</th>
+                                        <th className="p-4 text-center font-semibold">คงเหลือ</th>
+                                        <th className="p-4 text-center font-semibold">ขั้นต่ำ</th>
+                                        <th className="p-4 text-right font-semibold">ราคา/หน่วย</th>
+                                        <th className="p-4 text-center font-semibold">จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                    {lowStockItems.map(i => (
+                                        <tr key={i.id} className="hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
+                                            <td className="p-4 pl-6 font-mono text-gray-500">{i.code}</td>
+                                            <td className="p-4 font-medium text-gray-800 dark:text-gray-200">{i.name}</td>
+                                            <td className="p-4 text-center">
+                                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                                                    {i.quantity} {i.unit}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-center text-gray-600">{i.min_quantity}</td>
+                                            <td className="p-4 text-right text-gray-600">{formatCurrency(i.price)}</td>
+                                            <td className="p-4 flex justify-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => { setEditItem(i); setModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg"><Icon name="edit-2" size={18} /></button>
+                                                <button onClick={() => handleDelete(i.id)} disabled={deletingId === i.id} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50">
+                                                    {deletingId === i.id ? <Icon name="loader-2" size={18} className="animate-spin" /> : <Icon name="trash-2" size={18} />}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {/* Modal สำหรับเพิ่ม/แก้ไข */}
+                    {modalOpen && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+                            <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl w-full max-w-lg shadow-2xl transform transition-all scale-100">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="font-bold text-2xl dark:text-white flex items-center gap-2">
+                                        <Icon name={editItem ? 'edit' : 'package-plus'} className="text-primary" /> {editItem ? 'แก้ไขพัสดุ' : 'เพิ่มพัสดุใหม่'}
+                                    </h3>
+                                    <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><Icon name="x" size={24} /></button>
+                                </div>
+                                <form onSubmit={handleSave} className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">รหัส</label>
+                                            <input name="code" defaultValue={editItem?.code} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">หน่วยนับ</label>
+                                            <input name="unit" defaultValue={editItem?.unit} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ชื่อพัสดุ</label>
+                                        <input name="name" defaultValue={editItem?.name} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ราคา</label>
+                                            <input name="price" type="number" defaultValue={editItem?.price} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">จำนวน</label>
+                                            <input name="quantity" type="number" defaultValue={editItem?.quantity} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ขั้นต่ำ</label>
+                                            <input name="min_quantity" type="number" defaultValue={editItem?.min_quantity} className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all" required />
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
+                                        <button type="button" onClick={() => setModalOpen(false)} className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors">ยกเลิก</button>
+                                        <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 bg-primary hover:bg-primaryHover text-white rounded-xl shadow-lg shadow-primary/30 font-medium transition-all disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center gap-2 justify-center">
+                                            {isSubmitting && <Icon name="loader-2" size={20} className="animate-spin" />}
+                                            {!isSubmitting ? 'บันทึก' : 'กำลังบันทึก...'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ... (RequestManager, UserManager, WithdrawForm also updated similarly for styles) ...
+        // Implementing simplified stylish versions for completeness
+
+        // --- RequestManager (Dashboard + Tables) ---
+        const RequestManager = ({ data, setData, reload, alert }) => {
+            const [activeTab, setActiveTab] = useState('pending');
+            const [processingId, setProcessingId] = useState(null);
+
+            // แยกตาม status
+            const pendingRequests = data.requests.filter(r => r.status === 'pending');
+            const approvedRequests = data.requests.filter(r => r.status === 'approved');
+            const rejectedRequests = data.requests.filter(r => r.status === 'rejected');
+
+            const handleStatusChange = (id, status) => {
+                alert('ยืนยัน', `ต้องการเปลี่ยนสถานะเป็น ${status}?`, 'warning', () => {
+                    setProcessingId(id);
+                    if (typeof google !== 'undefined' && google.script) {
+                        google.script.run.withSuccessHandler((res) => {
+                            const updated = JSON.parse(res);
+                            setData(prev => {
+                                // Update request status
+                                const newRequests = prev.requests.map(r => r.id === updated.id ? { ...r, status: updated.status, actionBy: updated.actionBy } : r);
+
+                                // If approved, we need to deduct stock locally too to reflect changes immediately
+                                let newInventory = prev.inventory;
+                                if (updated.status === 'approved') {
+                                    const targetReq = prev.requests.find(r => r.id === updated.id);
+                                    if (targetReq) {
+                                        const items = targetReq.items; // already object
+                                        newInventory = prev.inventory.map(inv => {
+                                            const match = items.find(it => it.itemId === inv.id);
+                                            if (match) {
+                                                return { ...inv, quantity: Math.max(0, inv.quantity - match.qty) };
+                                            }
+                                            return inv;
+                                        });
+                                    }
+                                }
+                                return { ...prev, requests: newRequests, inventory: newInventory };
+                            });
+                            setProcessingId(null);
+                        })
+                            .withFailureHandler(() => setProcessingId(null))
+                            .updateRequestStatus(id, status, 'Admin');
+                    } else {
+                        setTimeout(() => {
+                            alert('จำลอง', 'ระบบจำลองการอนุมัติ (Simulation)', 'success', reload);
+                            setProcessingId(null);
+                        }, 1000);
+                    }
+                });
+            };
+
+            const TabButton = ({ id, label, count }) => (
+                <button
+                    onClick={() => setActiveTab(id)}
+                    className={`px-4 py-2 rounded-xl font-medium transition-all ${activeTab === id ? 'bg-primary text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+                    {label} ({count})
+                </button>
+            );
+
+            const renderTable = (requests, showActions = false) => {
+                if (!requests.length) return <p className="text-center py-10 text-gray-400">ไม่มีรายการ</p>;
+
+                return (
+                    <div className="overflow-x-auto rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b dark:border-gray-700">
+                                <tr>
+                                    <th className="p-4 font-semibold">ผู้ขอ</th>
+                                    <th className="p-4 font-semibold">แผนก</th>
+                                    <th className="p-4 font-semibold">รายการ</th>
+                                    <th className="p-4 font-semibold">วันที่</th>
+                                    {showActions && <th className="p-4 font-semibold text-center">จัดการ</th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {requests.map(r => (
+                                    <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                                        <td className="p-4 font-medium text-gray-800 dark:text-white">{r.userName}</td>
+                                        <td className="p-4 text-gray-600 dark:text-gray-300">{r.department}</td>
+                                        <td className="p-4 text-gray-600 dark:text-gray-300">
+                                            {r.items.map(it => `${it.name} x${it.qty}`).join(', ')}
+                                        </td>
+                                        <td className="p-4 text-gray-600 dark:text-gray-300">{formatDate(r.date)}</td>
+                                        {showActions && (
+                                            <td className="p-4 text-center flex justify-center gap-2">
+                                                {processingId === r.id ? (
+                                                    <span className="text-gray-400 flex items-center gap-1"><Icon name="loader-2" size={16} className="animate-spin" /> กำลังบันทึก...</span>
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => handleStatusChange(r.id, 'approved')} className="px-3 py-1 bg-green-500 text-white rounded-xl text-xs font-medium hover:bg-green-600 transition-colors">อนุมัติ</button>
+                                                        <button onClick={() => handleStatusChange(r.id, 'rejected')} className="px-3 py-1 bg-red-500 text-white rounded-xl text-xs font-medium hover:bg-red-600 transition-colors">ปฏิเสธ</button>
+                                                    </>
+                                                )}
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">📝 จัดการรายการขอเบิก</h2>
+
+                    {/* Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-yellow-100 dark:bg-yellow-900/30 p-6 rounded-3xl shadow-sm flex flex-col items-center justify-center">
+                            <span className="text-gray-600 dark:text-yellow-400 text-sm font-medium">รออนุมัติ</span>
+                            <span className="text-2xl font-bold text-yellow-700 dark:text-yellow-300">{pendingRequests.length}</span>
+                        </div>
+                        <div className="bg-green-100 dark:bg-green-900/30 p-6 rounded-3xl shadow-sm flex flex-col items-center justify-center">
+                            <span className="text-gray-600 dark:text-green-400 text-sm font-medium">อนุมัติแล้ว</span>
+                            <span className="text-2xl font-bold text-green-700 dark:text-green-300">{approvedRequests.length}</span>
+                        </div>
+                        <div className="bg-red-100 dark:bg-red-900/30 p-6 rounded-3xl shadow-sm flex flex-col items-center justify-center">
+                            <span className="text-gray-600 dark:text-red-400 text-sm font-medium">ปฏิเสธ</span>
+                            <span className="text-2xl font-bold text-red-700 dark:text-red-300">{rejectedRequests.length}</span>
+                        </div>
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="flex gap-2">
+                        <TabButton id="pending" label="รออนุมัติ" count={pendingRequests.length} />
+                        <TabButton id="approved" label="อนุมัติแล้ว" count={approvedRequests.length} />
+                        <TabButton id="rejected" label="ปฏิเสธ" count={rejectedRequests.length} />
+                    </div>
+
+                    {/* Tables */}
+                    <div className="space-y-6">
+                        {activeTab === 'pending' && renderTable(pendingRequests, true)}
+                        {activeTab === 'approved' && renderTable(approvedRequests)}
+                        {activeTab === 'rejected' && renderTable(rejectedRequests)}
+                    </div>
+                </div>
+            );
+        };
+
+
+        const InventoryAccountManager = ({ data, reload, alert }) => {
+
+            // คำนวณจำนวนวัสดุใช้ไปจาก requests ที่อนุมัติแล้ว
+            const usedQtyMap = data.requests
+                .filter(r => r.status === 'approved')
+                .flatMap(r => r.items)
+                .reduce((acc, item) => {
+                    if (!acc[item.itemId]) acc[item.itemId] = 0;
+                    acc[item.itemId] += item.qty;
+                    return acc;
+                }, {});
+
+            // คำนวณข้อมูลตาราง
+            const tableData = data.inventory.map(i => {
+                const used = usedQtyMap[i.id] || 0;
+                const purchaseQty = i.purchaseQty || 0; // จำนวนจัดซื้อเพิ่ม ถ้ามี
+                const carryOver = i.quantity; // ยอดยกมา
+                const price = i.price;
+
+                const carryOverValue = carryOver * price;
+                const purchaseValue = purchaseQty * price;
+                const usedValue = used * price;
+                const remainQty = carryOver + purchaseQty - used;
+                const remainValue = remainQty * price;
+
+                return {
+                    ...i,
+                    carryOver,
+                    carryOverValue,
+                    purchaseQty,
+                    purchaseValue,
+                    used,
+                    usedValue,
+                    remainQty,
+                    remainValue
+                };
+            });
+
+            // รวมทั้งหมด
+            const total = tableData.reduce((acc, i) => {
+                acc.carryOver += i.carryOver;
+                acc.carryOverValue += i.carryOverValue;
+                acc.purchaseQty += i.purchaseQty;
+                acc.purchaseValue += i.purchaseValue;
+                acc.used += i.used;
+                acc.usedValue += i.usedValue;
+                acc.remainQty += i.remainQty;
+                acc.remainValue += i.remainValue;
+                return acc;
+            }, { carryOver: 0, carryOverValue: 0, purchaseQty: 0, purchaseValue: 0, used: 0, usedValue: 0, remainQty: 0, remainValue: 0 });
+
+            const nearEmptyCount = tableData.filter(i => i.remainQty <= i.min_quantity).length;
+
+            return (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">📊 บัญชีพัสดุ</h2>
+
+                    {/* Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <StatBox title="บัญชีพัสดุทั้งหมด" value={data.inventory.length} color="bg-blue-500" icon="package" />
+                        <StatBox title="มูลค่าคงเหลือ" value={formatCurrency(total.remainValue)} color="bg-green-500" icon="dollar-sign" />
+                        <StatBox title="วัสดุใช้ไป" value={total.used} color="bg-yellow-500" icon="check-circle" />
+                        <StatBox title="พัสดุใกล้หมด" value={nearEmptyCount} color="bg-red-500" icon="alert-triangle" />
+                    </div>
+
+                    {/* Table */}
+                    <div className="overflow-x-auto rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b dark:border-gray-700">
+                                <tr>
+                                    <th className="p-2">รหัส</th>
+                                    <th className="p-2">รายการ</th>
+                                    <th className="p-2">ยอดยกมา</th>
+                                    <th className="p-2">หน่วยนับ</th>
+                                    <th className="p-2">ราคาต่อหน่วย</th>
+                                    <th className="p-2">รวมวัสดุคงเหลือยกมา</th>
+                                    <th className="p-2">จัดซื้อ</th>
+                                    <th className="p-2">ราคาต่อหน่วย</th>
+                                    <th className="p-2">รวมราคาวัสดุจัดซื้อ</th>
+                                    <th className="p-2">วัสดุใช้ไป</th>
+                                    <th className="p-2">ราคาต่อหน่วย</th>
+                                    <th className="p-2">รวมวัสดุใช้ไป</th>
+                                    <th className="p-2">วัสดุคงเหลือ</th>
+                                    <th className="p-2">รวมราคาคงเหลือ</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {tableData.map(i => (
+                                    <tr key={i.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+                                        <td className="p-2">{i.code}</td>
+                                        <td className="p-2">{i.name}</td>
+                                        <td className="p-2 text-center">{i.carryOver}</td>
+                                        <td className="p-2 text-center">{i.unit}</td>
+                                        <td className="p-2 text-right">{formatCurrency(i.price)}</td>
+                                        <td className="p-2 text-right">{formatCurrency(i.carryOverValue)}</td>
+                                        <td className="p-2 text-center">{i.purchaseQty}</td>
+                                        <td className="p-2 text-right">{formatCurrency(i.price)}</td>
+                                        <td className="p-2 text-right">{formatCurrency(i.purchaseValue)}</td>
+                                        <td className="p-2 text-center">{i.used}</td>
+                                        <td className="p-2 text-right">{formatCurrency(i.price)}</td>
+                                        <td className="p-2 text-right">{formatCurrency(i.usedValue)}</td>
+                                        <td className="p-2 text-center">{i.remainQty}</td>
+                                        <td className="p-2 text-right">{formatCurrency(i.remainValue)}</td>
+                                    </tr>
+                                ))}
+
+                                {/* Total Row */}
+                                <tr className="font-bold bg-gray-100 dark:bg-gray-800/50">
+                                    <td className="p-2 text-center" colSpan={2}>รวมทั้งสิ้น</td>
+                                    <td className="p-2 text-center">{total.carryOver}</td>
+                                    <td className="p-2"></td>
+                                    <td className="p-2"></td>
+                                    <td className="p-2 text-right">{formatCurrency(total.carryOverValue)}</td>
+                                    <td className="p-2 text-center">{total.purchaseQty}</td>
+                                    <td className="p-2"></td>
+                                    <td className="p-2 text-right">{formatCurrency(total.purchaseValue)}</td>
+                                    <td className="p-2 text-center">{total.used}</td>
+                                    <td className="p-2"></td>
+                                    <td className="p-2 text-right">{formatCurrency(total.usedValue)}</td>
+                                    <td className="p-2 text-center">{total.remainQty}</td>
+                                    <td className="p-2 text-right">{formatCurrency(total.remainValue)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const WithdrawForm = ({ user, data, setData, reload, alert, onFinish }) => {
+            const [cart, setCart] = useState([]);
+            const [reason, setReason] = useState('');
+            const [aiGen, setAiGen] = useState(false);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+
+            // ... logic add/updateQty/submit same ...
+            const add = (item) => {
+                const exist = cart.find(x => x.itemId === item.id);
+                if (exist && exist.qty >= item.quantity) return alert('เตือน', 'ของหมดแล้ว', 'warning');
+                if (exist) setCart(cart.map(x => x.itemId === item.id ? { ...x, qty: x.qty + 1 } : x));
+                else setCart([...cart, { itemId: item.id, name: item.name, unit: item.unit, qty: 1, max: item.quantity }]);
+            };
+
+            const updateQty = (id, delta) => {
+                setCart(cart.map(item => {
+                    if (item.itemId === id) {
+                        const newQty = item.qty + delta;
+                        if (newQty > item.max) return item;
+                        return { ...item, qty: Math.max(0, newQty) };
+                    }
+                    return item;
+                }).filter(x => x.qty > 0));
+            };
+
+            const magicReason = () => {
+                if (cart.length === 0) return alert('AI', 'เลือกของก่อนนะ', 'warning');
+                setAiGen(true);
+                const items = cart.map(i => i.name).join(', ');
+                const prompt = `ช่วยเขียนเหตุผลการเบิกของพัสดุครู สั้นๆ ทางการ สำหรับรายการ: ${items}`;
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run.withSuccessHandler(res => { setReason(res.trim()); setAiGen(false); }).callGeminiAPI(prompt);
+                } else {
+                    setTimeout(() => { setReason("เหตุผลจำลอง (เพราะไม่ได้เชื่อมต่อ GAS)"); setAiGen(false); }, 500);
+                }
+            };
+
+            const submit = () => {
+                if (cart.length === 0 || !reason) return alert('เตือน', 'กรุณาเลือกของและระบุเหตุผล', 'warning');
+                setIsSubmitting(true);
+                const req = { userId: user.id, userName: user.name, department: user.department, items: cart, reason };
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run.withSuccessHandler((res) => {
+                        const savedReq = JSON.parse(res);
+                        setData(prev => ({ ...prev, requests: [...prev.requests, savedReq] }));
+                        onFinish();
+                        setIsSubmitting(false);
+                        alert('สำเร็จ', 'ส่งใบเบิกแล้ว', 'success');
+                    }).withFailureHandler(() => setIsSubmitting(false)).saveRequest(req);
+                } else {
+                    setTimeout(() => {
+                        setIsSubmitting(false);
+                        alert('จำลอง', 'ระบบจำลองการเบิก (Simulation)', 'success', () => { onFinish(); reload(); });
+                    }, 1000);
+                }
+            };
+
+            return (
+                <div className="grid md:grid-cols-2 gap-8 h-[calc(100vh-120px)]">
+                    <div className="overflow-y-auto custom-scrollbar pr-4">
+                        <h3 className="font-bold mb-4 text-gray-700 dark:text-white text-lg sticky top-0 bg-gray-50 dark:bg-gray-900 py-2 z-10 backdrop-blur-sm">🛒 เลือกพัสดุ</h3>
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                            {data.inventory.filter(i => i.quantity > 0).map(i => (
+                                <div key={i.id} onClick={() => add(i)} className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-transparent hover:border-primary cursor-pointer transition-all group relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity"><Icon name="box" size={40} /></div>
+                                    <div className="font-bold text-gray-800 dark:text-white group-hover:text-primary transition-colors">{i.name}</div>
+                                    <div className="flex justify-between items-end mt-2">
+                                        <div className="text-xs text-gray-400">{i.code}</div>
+                                        <div className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-lg font-medium">คงเหลือ {i.quantity} {i.unit}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-xl flex flex-col h-full border border-gray-100 dark:border-gray-700 relative">
+                        <h3 className="font-bold text-xl mb-6 pb-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                            <Icon name="clipboard-list" className="text-primary" /> รายการเบิก
+                        </h3>
+
+                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 mb-4">
+                            {cart.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                                    <Icon name="shopping-cart" size={40} className="opacity-20" />
+                                    <span>เลือกรายการจากทางซ้าย</span>
+                                </div>
+                            ) : (
+                                cart.map(c => (
+                                    <div key={c.itemId} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl">
+                                        <div>
+                                            <div className="text-sm font-medium dark:text-white">{c.name}</div>
+                                            <div className="text-xs text-gray-400">{c.unit}</div>
+                                        </div>
+                                        <div className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-1 shadow-sm">
+                                            <button onClick={() => updateQty(c.itemId, -1)} className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-primary"><Icon name="minus" size={14} /></button>
+                                            <span className="font-bold text-sm w-6 text-center">{c.qty}</span>
+                                            <button onClick={() => updateQty(c.itemId, 1)} className="w-6 h-6 flex items-center justify-center rounded bg-primary text-white shadow-sm"><Icon name="plus" size={14} /></button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <div className="space-y-4 mt-auto">
+                            <div className="relative">
+                                <textarea value={reason} onChange={e => setReason(e.target.value)}
+                                    className="w-full border border-gray-200 dark:border-gray-600 p-4 rounded-2xl text-sm bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none pr-12 resize-none h-24"
+                                    placeholder="ระบุเหตุผลในการเบิก..." />
+                                <button onClick={magicReason} className="absolute right-3 bottom-3 p-2 rounded-full bg-white dark:bg-gray-600 text-purple-500 hover:text-purple-700 shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={aiGen} title="AI Help">
+                                    {aiGen ? <Icon name="loader-2" size={18} className="animate-spin" /> : <Icon name="sparkles" size={18} />}
+                                </button>
+                            </div>
+                            <button onClick={submit} disabled={cart.length === 0 || isSubmitting} className="w-full bg-primary text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex justify-center items-center gap-2">
+                                {isSubmitting && <Icon name="loader-2" size={20} className="animate-spin" />}
+                                {isSubmitting ? 'กำลังส่งข้อมูล...' : 'ยืนยันการเบิกพัสดุ'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- UserManager Component (React UMD, Tailwind, CRUD) ---
+        function UserManager({ data, setData, reload, alert }) {
+            const [modalOpen, setModalOpen] = React.useState(false);
+            const [editUser, setEditUser] = React.useState(null);
+            const [isSubmitting, setIsSubmitting] = React.useState(false);
+            const [deletingId, setDeletingId] = React.useState(null);
+            const [form, setForm] = React.useState({
+                username: "",
+                password: "",
+                name: "",
+                role: "teacher",
+                department: ""
+            });
+            // Reset form when modal opens
+            React.useEffect(function () {
+                if (modalOpen) {
+                    if (editUser) {
+                        setForm({
+                            username: editUser.username || "",
+                            password: editUser.password || "",
+                            name: editUser.name || "",
+                            role: editUser.role || "teacher",
+                            department: editUser.department || ""
+                        });
+                    } else {
+                        setForm({
+                            username: "",
+                            password: "",
+                            name: "",
+                            role: "teacher",
+                            department: ""
+                        });
+                    }
+                }
+            }, [modalOpen, editUser]);
+
+            function handleChange(e) {
+                const { name, value } = e.target;
+                setForm(f => ({ ...f, [name]: value }));
+                // If role changes to admin, clear department
+                if (name === "role" && value === "admin") {
+                    setForm(f => ({ ...f, department: "" }));
+                }
+            }
+
+            function handleSave(e) {
+                e.preventDefault();
+                // Validation
+                if (!form.username.trim() || !form.password.trim() || !form.name.trim()) {
+                    (alert || window.alertObj)("ผิดพลาด", "กรุณากรอกข้อมูลให้ครบถ้วน", "error");
+                    return;
+                }
+                if (form.role === "teacher" && !form.department.trim()) {
+                    (alert || window.alertObj)("ผิดพลาด", "กรุณาระบุตำแหน่งสำหรับครู", "error");
+                    return;
+                }
+                const userObj = {
+                    id: editUser ? editUser.id : null,
+                    username: form.username.trim(),
+                    password: form.password,
+                    name: form.name.trim(),
+                    role: form.role,
+                    department: form.role === "teacher" ? form.department.trim() : ""
+                };
+                if (typeof google !== 'undefined' && google.script) {
+                    setIsSubmitting(true);
+                    google.script.run
+                        .withSuccessHandler(function (res) {
+                            const savedUser = JSON.parse(res);
+                            setData(prev => {
+                                const exists = prev.users.some(u => u.id === savedUser.id);
+                                return {
+                                    ...prev,
+                                    users: exists
+                                        ? prev.users.map(u => u.id === savedUser.id ? savedUser : u)
+                                        : [...prev.users, savedUser]
+                                };
+                            });
+                            setIsSubmitting(false);
+                            setModalOpen(false);
+                            (alert || window.alertObj)("สำเร็จ", "บันทึกข้อมูลผู้ใช้งานแล้ว", "success");
+                        })
+                        .withFailureHandler(function () { setIsSubmitting(false); })
+                        .saveUser(userObj);
+                } else {
+                    // Simulation
+                    setIsSubmitting(true);
+                    setTimeout(function () {
+                        setIsSubmitting(false);
+                        (alert || window.alertObj)("จำลอง", "ระบบจำลองการบันทึก (Simulation)", "success", function () {
+                            setModalOpen(false);
+                            if (reload) reload();
+                        });
+                    }, 1000);
+                }
+            }
+
+            function handleDelete(id) {
+                (alert || window.alertObj)("ยืนยัน", "ต้องการลบผู้ใช้งานนี้?", "warning", function () {
+                    setDeletingId(id);
+                    if (typeof google !== 'undefined' && google.script) {
+                        google.script.run
+                            .withSuccessHandler(function () {
+                                setData(prev => ({
+                                    ...prev,
+                                    users: prev.users.filter(u => u.id !== id)
+                                }));
+                                setDeletingId(null);
+                                (alert || window.alertObj)("สำเร็จ", "ลบผู้ใช้งานแล้ว", "success");
+                            })
+                            .withFailureHandler(function (err) {
+                                setDeletingId(null);
+                                (alert || window.alertObj)("ผิดพลาด", err.toString(), "error");
+                            })
+                            .deleteUser(id);
+                    } else {
+                        setTimeout(function () {
+                            setDeletingId(null);
+                            (alert || window.alertObj)("จำลอง", "ระบบจำลองการลบ (Simulation)", "success", function () {
+                                if (reload) reload();
+                            });
+                        }, 1000);
+                    }
+                });
+            }
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">👤 จัดการผู้ใช้งาน</h2>
+                        <button
+                            onClick={function () { setEditUser(null); setModalOpen(true); }}
+                            className="bg-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 transition-all font-medium"
+                        >
+                            <Icon name="plus" size={20} /> เพิ่มผู้ใช้งาน
+                        </button>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b dark:border-gray-700">
+                                <tr>
+                                    <th className="p-4 pl-6 font-semibold">ชื่อผู้ใช้</th>
+                                    <th className="p-4 font-semibold">รหัสผ่าน</th>
+                                    <th className="p-4 font-semibold">ชื่อ-นามสกุล</th>
+                                    <th className="p-4 font-semibold">สิทธิ์</th>
+                                    <th className="p-4 font-semibold">ตำแหน่ง</th>
+                                    <th className="p-4 font-semibold text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {data.users.map(function (u) {
+                                    return (
+                                        <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
+                                            <td className="p-4 pl-6 font-mono text-gray-700 dark:text-gray-100">{u.username}</td>
+                                            <td className="p-4 font-mono text-gray-400">{u.password}</td>
+                                            <td className="p-4 text-gray-800 dark:text-gray-200">{u.name}</td>
+                                            <td className="p-4">
+                                                <span className={
+                                                    u.role === "admin"
+                                                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-3 py-1 rounded-full text-xs font-bold"
+                                                        : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-3 py-1 rounded-full text-xs font-bold"
+                                                }>
+                                                    {u.role === "admin" ? "ผู้ดูแลระบบ" : "ครู"}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-gray-600 dark:text-gray-300">{u.role === "teacher" ? u.department : "-"}</td>
+                                            <td className="p-4 flex justify-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={function () { setEditUser(u); setModalOpen(true); }}
+                                                    className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg"
+                                                ><Icon name="edit-2" size={18} /></button>
+                                                <button
+                                                    onClick={function () { handleDelete(u.id); }}
+                                                    disabled={deletingId === u.id}
+                                                    className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50"
+                                                >
+                                                    {deletingId === u.id ? <Icon name="loader-2" size={18} className="animate-spin" /> : <Icon name="trash-2" size={18} />}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    {modalOpen && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+                            <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl w-full max-w-lg shadow-2xl transform transition-all scale-100">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="font-bold text-2xl dark:text-white flex items-center gap-2">
+                                        <Icon name={editUser ? "edit" : "user-plus"} className="text-primary" /> {editUser ? "แก้ไขผู้ใช้งาน" : "เพิ่มผู้ใช้งานใหม่"}
+                                    </h3>
+                                    <button onClick={function () { setModalOpen(false); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><Icon name="x" size={24} /></button>
+                                </div>
+                                <form onSubmit={handleSave} className="space-y-4">
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ชื่อผู้ใช้ (Username)</label>
+                                        <input
+                                            name="username"
+                                            className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                                            required
+                                            value={form.username}
+                                            onChange={handleChange}
+                                            autoComplete="off"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">รหัสผ่าน (Password)</label>
+                                        <input
+                                            name="password"
+                                            type="text"
+                                            className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                                            required
+                                            value={form.password}
+                                            onChange={handleChange}
+                                            autoComplete="off"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ชื่อ-นามสกุล</label>
+                                        <input
+                                            name="name"
+                                            className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                                            required
+                                            value={form.name}
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">สิทธิ์</label>
+                                        <select
+                                            name="role"
+                                            className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                                            value={form.role}
+                                            onChange={handleChange}
+                                        >
+                                            <option value="teacher">ครู</option>
+                                            <option value="admin">ผู้ดูแลระบบ</option>
+                                        </select>
+                                    </div>
+                                    {form.role === "teacher" && (
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ตำแหน่ง / แผนก</label>
+                                            <input
+                                                name="department"
+                                                className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                                                required={form.role === "teacher"}
+                                                value={form.department}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
+                                    )}
+                                    <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
+                                        <button type="button" onClick={function () { setModalOpen(false); }} disabled={isSubmitting} className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors disabled:opacity-50">ยกเลิก</button>
+                                        <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 bg-primary hover:bg-primaryHover text-white rounded-xl shadow-lg shadow-primary/30 font-medium transition-all flex items-center gap-2 disabled:opacity-50">
+                                            {isSubmitting && <Icon name="loader-2" size={18} className="animate-spin" />}
+                                            {isSubmitting ? 'กำลังบันทึก...' : 'บันทึก'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Helper: Resize Image (Recursive to fit 50k limit)
+        const resizeImage = (file, maxWidth = 200) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const runResize = (width) => {
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            const scale = width / img.width;
+                            canvas.width = width;
+                            canvas.height = img.height * scale;
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                            const base64 = canvas.toDataURL('image/png');
+                            // Check 50k limit (approx 37KB)
+                            if (base64.length > 48000 && width > 50) {
+                                // Recursively reduce width by 20px
+                                runResize(width - 20);
+                            } else {
+                                resolve(base64);
+                            }
+                        };
+                        runResize(maxWidth);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        };
+
+        // SettingsPage Component (React UMD, ready for <script type="text/babel">)
+        function SettingsPage(props) {
+            const data = props.data, setData = props.setData, reload = props.reload, alert = props.alert;
+            const [schoolName, setSchoolName] = React.useState((data.settings && data.settings.schoolName) || "");
+            const [logoFile, setLogoFile] = React.useState(null);
+            const [logoPreview, setLogoPreview] = React.useState((data.settings && (data.settings.logoBase64 || data.settings.logoUrl)) || "");
+            const [theme, setTheme] = React.useState((data.settings && data.settings.theme) || "teal");
+            const [darkMode, setDarkMode] = React.useState((data.settings && data.settings.darkMode) || "system");
+            const [saving, setSaving] = React.useState(false);
+
+            // Live preview theme/dark
+            React.useEffect(function () {
+                var THEMES = {
+                    teal: { primary: '#0d9488', hover: '#0f766e', light: '#f0fdfa', border: '#99f6e4' },
+                    blue: { primary: '#2563eb', hover: '#1d4ed8', light: '#eff6ff', border: '#bfdbfe' },
+                    purple: { primary: '#9333ea', hover: '#7e22ce', light: '#faf5ff', border: '#e9d5ff' },
+                    orange: { primary: '#ea580c', hover: '#c2410c', light: '#fff7ed', border: '#fed7aa' },
+                    pink: { primary: '#db2777', hover: '#be185d', light: '#fdf2f8', border: '#fbcfe8' }
+                };
+                var t = THEMES[theme] || THEMES.teal;
+                document.documentElement.style.setProperty('--theme-primary', t.primary);
+                document.documentElement.style.setProperty('--theme-hover', t.hover);
+                document.documentElement.style.setProperty('--theme-light', t.light);
+                document.documentElement.style.setProperty('--theme-border', t.border);
+                var isDark = darkMode === 'dark' || (darkMode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                if (isDark) document.documentElement.classList.add('dark');
+                else document.documentElement.classList.remove('dark');
+            }, [theme, darkMode]);
+
+            // Logo preview
+            function handleLogoChange(e) {
+                var file = e.target.files[0];
+                if (!file) return;
+                setLogoFile(file);
+                // Resize immediately
+                resizeImage(file).then(function (base64) {
+                    setLogoPreview(base64);
+                });
+            }
+
+            // Save
+            function handleSave() {
+                if (!schoolName.trim()) {
+                    if (typeof alert === "function") alert("ผิดพลาด", "กรุณาระบุชื่อโรงเรียน", "error");
+                    else if (typeof window.alertObj === "function") window.alertObj("ผิดพลาด", "กรุณาระบุชื่อโรงเรียน", "error");
+                    else window.alert("กรุณาระบุชื่อโรงเรียน");
+                    return;
+                }
+                setSaving(true);
+                // logoPreview is already resized base64
+                var formData = { schoolName: schoolName, theme: theme, darkMode: darkMode, logoBase64: logoPreview };
+                sendToServer(formData);
+            }
+
+            function sendToServer(payload) {
+                // GAS or mock
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run.withSuccessHandler(function (res) {
+                        const savedConfig = typeof res === 'string' ? JSON.parse(res) : res;
+                        setData(prev => ({ ...prev, settings: savedConfig }));
+                        // Update live preview states
+                        if (savedConfig.schoolName !== undefined) setSchoolName(savedConfig.schoolName);
+                        // Theme will be applied via useEffect on data.settings change
+                        if (typeof alert === "function") alert("สำเร็จ", "บันทึกการตั้งค่าเรียบร้อย", "success");
+                        else if (typeof window.alertObj === "function") window.alertObj("สำเร็จ", "บันทึกการตั้งค่าเรียบร้อย", "success");
+                        else window.alert("บันทึกการตั้งค่าเรียบร้อย");
+                        setSaving(false);
+                    }).withFailureHandler(function (err) {
+                        if (typeof alert === "function") alert("ผิดพลาด", "ไม่สามารถบันทึกข้อมูลได้: " + err, "error");
+                        else if (typeof window.alertObj === "function") window.alertObj("ผิดพลาด", "ไม่สามารถบันทึกข้อมูลได้: " + err, "error");
+                        else window.alert("ไม่สามารถบันทึกข้อมูลได้: " + err);
+                        setSaving(false);
+                    }).saveSettings(payload);
+                } else {
+                    // mock
+                    if (window.console) console.log("Settings Saved (Mock)", payload);
+                    if (typeof alert === "function") alert("สำเร็จ", "บันทึกการตั้งค่า (Mock)", "success");
+                    else if (typeof window.alertObj === "function") window.alertObj("สำเร็จ", "บันทึกการตั้งค่า (Mock)", "success");
+                    else window.alert("บันทึกการตั้งค่า (Mock)");
+                    setSaving(false);
+                }
+            }
+
+            // UI
+            return (
+                React.createElement("div", { className: "space-y-6 max-w-3xl mx-auto" },
+                    React.createElement("h2", { className: "text-2xl font-bold dark:text-white" }, "⚙️ ตั้งค่าระบบ"),
+                    // School Name
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300" }, "ชื่อโรงเรียน"),
+                        React.createElement("input", {
+                            type: "text",
+                            value: schoolName,
+                            onChange: function (e) { setSchoolName(e.target.value); },
+                            className: "w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                        })
+                    ),
+                    // Logo upload
+                    React.createElement("div", { className: "space-y-2" },
+                        React.createElement("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300" }, "โลโก้โรงเรียน"),
+                        React.createElement("div", { className: "flex items-center gap-4" },
+                            React.createElement("input", { type: "file", accept: "image/*", onChange: handleLogoChange }),
+                            logoPreview && React.createElement("img", {
+                                src: logoPreview,
+                                alt: "Preview Logo",
+                                className: "h-16 w-16 object-contain border border-gray-200 dark:border-gray-600 rounded-lg"
+                            })
+                        )
+                    ),
+                    // Theme select
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300" }, "ธีมสี"),
+                        React.createElement("select", {
+                            value: theme,
+                            onChange: function (e) { setTheme(e.target.value); },
+                            className: "w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                        },
+                            React.createElement("option", { value: "teal" }, "Teal"),
+                            React.createElement("option", { value: "blue" }, "Blue"),
+                            React.createElement("option", { value: "purple" }, "Purple"),
+                            React.createElement("option", { value: "orange" }, "Orange"),
+                            React.createElement("option", { value: "pink" }, "Pink")
+                        )
+                    ),
+                    // Dark mode select
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300" }, "โหมดมืด/สว่าง"),
+                        React.createElement("select", {
+                            value: darkMode,
+                            onChange: function (e) { setDarkMode(e.target.value); },
+                            className: "w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                        },
+                            React.createElement("option", { value: "system" }, "ตามระบบ"),
+                            React.createElement("option", { value: "light" }, "สว่าง"),
+                            React.createElement("option", { value: "dark" }, "มืด")
+                        )
+                    ),
+                    // Save button
+                    React.createElement("div", { className: "pt-4" },
+                        React.createElement("button", {
+                            onClick: handleSave,
+                            disabled: saving,
+                            className: "px-6 py-3 bg-primary text-white rounded-xl shadow-lg shadow-primary/30 hover:shadow-primary/50 font-medium transition-all disabled:opacity-50"
+                        }, saving ? "กำลังบันทึก..." : "บันทึกการตั้งค่า")
+                    )
+                )
+            );
+        }
+
+        // --- MyRequests (Teacher) Component ---
+        function MyRequests({ user, data }) {
+            // Filter requests for this user
+            const myRequests = (data.requests || []).filter(r => r.userId === user.id);
+
+            // Status color mapping
+            const statusMap = {
+                pending: { label: "รออนุมัติ", color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" },
+                approved: { label: "อนุมัติ", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" },
+                rejected: { label: "ปฏิเสธ", color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" }
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">📝 รายการขอเบิกของฉัน</h2>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b dark:border-gray-700">
+                                <tr>
+                                    <th className="p-4 font-semibold">วันที่</th>
+                                    <th className="p-4 font-semibold">ฝ่าย/กลุ่มสาระฯ</th>
+                                    <th className="p-4 font-semibold">วัตถุประสงค์</th>
+                                    <th className="p-4 font-semibold">รายการ</th>
+                                    <th className="p-4 font-semibold text-center">สถานะ</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {myRequests.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="text-center py-10 text-gray-400">ยังไม่มีประวัติการขอเบิก</td>
+                                    </tr>
+                                ) : (
+                                    myRequests
+                                        .slice()
+                                        .sort((a, b) => {
+                                            // Sort by date desc
+                                            const da = a.date?.seconds ? a.date.seconds : new Date(a.date).getTime() / 1000;
+                                            const db = b.date?.seconds ? b.date.seconds : new Date(b.date).getTime() / 1000;
+                                            return db - da;
+                                        })
+                                        .map(r => (
+                                            <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                                                <td className="p-4">{formatDate(r.date)}</td>
+                                                <td className="p-4">{r.department}</td>
+                                                <td className="p-4">{r.reason}</td>
+                                                <td className="p-4">
+                                                    <ul className="list-disc ml-4 space-y-1">
+                                                        {Array.isArray(r.items) && r.items.map((it, idx) => (
+                                                            <li key={idx}>{it.name} <span className="text-xs text-gray-400">x{it.qty} {it.unit}</span></li>
+                                                        ))}
+                                                    </ul>
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${statusMap[r.status]?.color || "bg-gray-200 text-gray-700"}`}>
+                                                        {statusMap[r.status]?.label || r.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        const ProfilePage = ({ user }) => (
+            <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-gray-800 rounded-3xl shadow-sm max-w-md mx-auto mt-10">
+                <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center text-4xl text-primary font-bold mb-4 shadow-inner">{user.name.charAt(0)}</div>
+                <h2 className="text-2xl font-bold dark:text-white mb-1">{user.name}</h2>
+                <p className="text-gray-500 mb-8">{user.role} • {user.department}</p>
+                <button className="px-6 py-2 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">แก้ไขโปรไฟล์</button>
+            </div>
+        );
+
+        // Loading and Alert Components (Styled)
+        const LoadingScreen = () => (
+            <div className="fixed inset-0 flex flex-col items-center justify-center bg-white dark:bg-gray-900 z-50">
+                <div className="relative">
+                    <div className="w-16 h-16 border-4 border-gray-200 border-t-primary rounded-full animate-spin"></div>
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-primary"><Icon name="box" size={20} /></div>
+                </div>
+                <p className="mt-4 text-gray-400 font-medium animate-pulse">กำลังโหลดข้อมูล...</p>
+            </div>
+        );
+
+        const LoginPage = ({ onLogin, alert, setAlert, settings }) => {
+            const [error, setError] = React.useState('');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                setError(''); // Clear previous error
+                onLogin(e.target.username.value, e.target.password.value, setError);
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
+                    <div className="bg-white/80 dark:bg-gray-800/90 backdrop-blur-lg p-10 rounded-3xl shadow-2xl w-full max-w-md animate-fade-in border border-white/20">
+                        <div className="text-center mb-8">
+                            <div className="w-20 h-20 bg-gradient-to-tr from-primary to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary/30 text-white transform rotate-3 hover:rotate-0 transition-transform">
+                                {settings && settings.logoBase64 ? (
+                                    <img src={settings.logoBase64} alt="Logo" className="w-full h-full object-contain" />
+                                ) : (
+                                    <Icon name="box" size={40} />
+                                )}
+                            </div>
+                            <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">ระบบเบิกพัสดุและบัญชีพัสดุ</h1>
+                            <p className="text-gray-500 font-medium">{settings && settings.schoolName ? settings.schoolName : 'โรงเรียนตัวอย่าง'}</p>
+                        </div>
+
+                        {/* Error Message */}
+                        {error && (
+                            <div className="mb-5 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center gap-3 animate-fade-in">
+                                <Icon name="alert-circle" size={20} className="text-red-500" />
+                                <p className="text-sm text-red-600 dark:text-red-400 font-medium">{error}</p>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            <div className="space-y-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 ml-1">ชื่อผู้ใช้งาน</label>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-3.5 text-gray-400"><Icon name="user" size={20} /></span>
+                                    <input name="username" className="w-full border border-gray-200 dark:border-gray-600 p-3 pl-12 rounded-xl bg-gray-50 dark:bg-gray-700/50 focus:ring-2 focus:ring-primary focus:bg-white dark:focus:bg-gray-700 outline-none transition-all" required placeholder="Username" />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 ml-1">รหัสผ่าน</label>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-3.5 text-gray-400"><Icon name="lock" size={20} /></span>
+                                    <input name="password" type="password" className="w-full border border-gray-200 dark:border-gray-600 p-3 pl-12 rounded-xl bg-gray-50 dark:bg-gray-700/50 focus:ring-2 focus:ring-primary focus:bg-white dark:focus:bg-gray-700 outline-none transition-all" required placeholder="••••••" />
+                                </div>
+                            </div>
+                            <button className="w-full bg-gradient-to-r from-primary to-teal-600 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:scale-[1.02] active:scale-95 transition-all duration-200 mt-4">
+                                เข้าสู่ระบบ
+                            </button>
+                        </form>
+                        <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700 text-center">
+                            <p className="text-xs text-gray-400">Demo Account:</p>
+                            <div className="flex justify-center gap-4 mt-2 text-xs font-mono text-primary bg-primary/5 py-2 rounded-lg">
+                                <span>Admin: admin / 1234</span>
+                                <span>|</span>
+                                <span>Teacher: teacher / 1234</span>
+                            </div>
+                        </div>
+                    </div>
+                    {alert.isOpen && <SweetAlert {...alert} />}
+                </div>
+            );
+        };
+
+        const SweetAlert = ({ isOpen, title, text, type, onConfirm, onCancel }) => {
+            if (!isOpen) return null;
+            const iconName = type === 'success' ? 'check-circle' : type === 'error' ? 'x-circle' : 'alert-triangle';
+            const iconColor = type === 'success' ? 'text-green-500' : type === 'error' ? 'text-red-500' : 'text-yellow-500';
+
+            const handleConfirm = () => {
+                // ปิด dialog ทันที
+                if (onCancel) onCancel(); // onCancel จะปิด dialog
+                // รัน callback หลังจากปิด dialog แล้ว
+                setTimeout(() => {
+                    if (onConfirm) onConfirm();
+                }, 100); // delay เล็กน้อยเพื่อให้ dialog ปิดก่อน
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center transform transition-all scale-100">
+                        <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-5 bg-gray-50 dark:bg-gray-700 ${iconColor}`}>
+                            <Icon name={iconName} size={36} />
+                        </div>
+                        <h3 className="text-xl font-bold mb-2 dark:text-white">{title}</h3>
+                        <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">{text}</p>
+                        <div className="flex gap-3 justify-center">
+                            {onConfirm && onCancel && <button onClick={onCancel} className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-xl text-gray-700 dark:text-gray-200 font-medium transition-colors">ยกเลิก</button>}
+                            <button onClick={onConfirm ? handleConfirm : onCancel} className={`px-8 py-2.5 text-white rounded-xl font-bold shadow-lg transition-transform hover:scale-105 ${type === 'danger' ? 'bg-red-500 shadow-red-500/30' : 'bg-primary shadow-primary/30'}`}>ตกลง</button>
+                        </div>
+                    </div>
+                </div>
+            )
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
