@@ -192,7 +192,7 @@
                                 settings: serverData.settings || {}
                             };
                             console.log(safeData);
-                            console.log(typeof serverData.settings);
+
                             setData(safeData);
                             const s = safeData.settings || {};
                             applyTheme(s.theme, s.darkMode);
@@ -251,25 +251,45 @@
 
                     try {
                         if (currentPage === 'inventory') {
+                            setLoading(true);
                             if (typeof google !== 'undefined' && google.script) {
                                 google.script.run.withSuccessHandler(inv => {
-                                    setData(prev => ({ ...prev, inventory: inv }));
-                                }).getInventoryData();
+                                    console.log('inv', inv);
+                                    setData(prev => ({ ...prev, inventory: JSON.parse(inv) || [] }));
+                                    setLoading(false);
+                                })
+                                    .withFailureHandler((err) => {
+                                        alertObj('Error', 'ไม่สามารถโหลดข้อมูลได้: ' + err, 'error');
+                                        setLoading(false);
+                                    }).getInventoryData();
                             }
                         } else if (currentPage === 'requests') {
+                            setLoading(true);
                             if (typeof google !== 'undefined' && google.script) {
                                 google.script.run.withSuccessHandler(req => {
-                                    setData(prev => ({ ...prev, requests: req }));
+                                    console.log('req', req);
+                                    setData(prev => ({ ...prev, requests: JSON.parse(req) || [] }));
+                                    setLoading(false);
+                                }).withFailureHandler((err) => {
+                                    alertObj('Error', 'ไม่สามารถโหลดข้อมูลได้: ' + err, 'error');
+                                    setLoading(false);
                                 }).getRequestsData();
                             }
                         } else if (currentPage === 'users') {
+                            setLoading(true);
                             if (typeof google !== 'undefined' && google.script) {
                                 google.script.run.withSuccessHandler(usrs => {
-                                    setData(prev => ({ ...prev, users: usrs }));
+                                    console.log('usrs', usrs);
+                                    setData(prev => ({ ...prev, users: JSON.parse(usrs) || [] }));
+                                    setLoading(false);
+                                }).withFailureHandler((err) => {
+                                    alertObj('Error', 'ไม่สามารถโหลดข้อมูลได้: ' + err, 'error');
+                                    setLoading(false);
                                 }).getUsersData();
                             }
                         }
                     } catch (e) {
+                        console.log('e', e);
                         console.error("Fetch error:", e);
                     }
                 };

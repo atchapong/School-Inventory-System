@@ -1,6 +1,6 @@
 // --- CONFIGURATION ---
 const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE"; // ใส่ Gemini API Key ที่นี่
-const SPREADSHEET_ID = "18XEyKLNW1mguv0ukaz714u9jg1k87bWlUzDJ58ILnJg"; // ปล่อยว่างไว้ถ้าสคริปต์ผูกกับ Sheet นี้อยู่แล้ว หรือใส่ ID ถ้าแยกไฟล์
+const SPREADSHEET_ID = "1m_kDwzzC-JTIFcwxMdv01J_bsYlIWHdN4s3Fb1jLCFY"; // ปล่อยว่างไว้ถ้าสคริปต์ผูกกับ Sheet นี้อยู่แล้ว หรือใส่ ID ถ้าแยกไฟล์
 
 // --- MAIN ---
 function doGet() {
@@ -265,24 +265,18 @@ function uuid() {
 }
 
 function getInventoryData() {
-  const data = getSheetData('Inventory');
-  return data.slice(1).map(r => ({
-    id: r[0], name: r[1], category: r[2], unit: r[3], price: r[4], quantity: r[5], minStock: r[6], image: r[7]
-  }));
+  const ss = getSS();
+  return JSON.stringify(sheetToJSON(ss.getSheetByName('Inventory')));
 }
 
 function getRequestsData() {
-  const data = getSheetData('Requests');
-  return data.slice(1).map(r => ({
-    id: r[0], userId: r[1], userName: r[2], userRole: r[3], items: JSON.parse(r[4]), date: r[5], status: r[6], note: r[7], actionBy: r[8]
-  })).reverse();
+  const ss = getSS();
+  return JSON.stringify(sheetToJSON(ss.getSheetByName('Requests')));
 }
 
 function getUsersData() {
-  const data = getSheetData('Users');
-  return data.slice(1).map(r => ({
-    id: r[0], username: r[1], password: r[2], name: r[3], role: r[4], department: r[5]
-  }));
+  const ss = getSS();
+  return JSON.stringify(sheetToJSON(ss.getSheetByName('Users')));
 }
 
 function getSheetData(sheetName) {
