@@ -1443,6 +1443,9 @@
             const [editUser, setEditUser] = React.useState(null);
             const [isSubmitting, setIsSubmitting] = React.useState(false);
             const [deletingId, setDeletingId] = React.useState(null);
+            const [searchTerm, setSearchTerm] = React.useState('');
+            const [page, setPage] = React.useState(1);
+            const [pageSize, setPageSize] = React.useState(10);
             const [form, setForm] = React.useState({
                 username: "",
                 password: "",
@@ -1534,6 +1537,34 @@
                 }
             }
 
+            // Filtering and pagination
+            const filteredUsers = (data.users || []).filter(u => {
+                if (!searchTerm.trim()) return true;
+                const q = searchTerm.toLowerCase();
+                return (
+                    (u.username || '').toLowerCase().includes(q) ||
+                    (u.name || '').toLowerCase().includes(q) ||
+                    (u.department || '').toLowerCase().includes(q)
+                );
+            });
+
+            const totalItems = filteredUsers.length;
+            const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+            const currentPage = Math.min(page, totalPages);
+            const startIndex = (currentPage - 1) * pageSize;
+            const pagedUsers = filteredUsers.slice(startIndex, startIndex + pageSize);
+
+            const handleChangePageSize = (e) => {
+                const value = Number(e.target.value) || 10;
+                setPageSize(value);
+                setPage(1);
+            };
+
+            const handleSearchChange = (e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+            };
+
             function handleDelete(id) {
                 (alert || window.alertObj)("ยืนยัน", "ต้องการลบผู้ใช้งานนี้?", "warning", function () {
                     setDeletingId(id);
@@ -1564,143 +1595,216 @@
             }
 
             return (
-                <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">👤 จัดการผู้ใช้งาน</h2>
-                        <button
-                            onClick={function () { setEditUser(null); setModalOpen(true); }}
-                            className="bg-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 transition-all font-medium"
-                        >
-                            <Icon name="plus" size={20} /> เพิ่มผู้ใช้งาน
-                        </button>
-                    </div>
-                    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b dark:border-gray-700">
-                                <tr>
-                                    <th className="p-4 pl-6 font-semibold">ชื่อผู้ใช้</th>
-                                    <th className="p-4 font-semibold">รหัสผ่าน</th>
-                                    <th className="p-4 font-semibold">ชื่อ-นามสกุล</th>
-                                    <th className="p-4 font-semibold">สิทธิ์</th>
-                                    <th className="p-4 font-semibold">ตำแหน่ง</th>
-                                    <th className="p-4 font-semibold text-center">จัดการ</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                {data.users.map(function (u) {
-                                    return (
-                                        <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
-                                            <td className="p-4 pl-6 font-mono text-gray-700 dark:text-gray-100">{u.username}</td>
-                                            <td className="p-4 font-mono text-gray-400">{u.password}</td>
-                                            <td className="p-4 text-gray-800 dark:text-gray-200">{u.name}</td>
-                                            <td className="p-4">
-                                                <span className={
-                                                    u.role === "admin"
-                                                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-3 py-1 rounded-full text-xs font-bold"
-                                                        : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-3 py-1 rounded-full text-xs font-bold"
-                                                }>
-                                                    {u.role === "admin" ? "ผู้ดูแลระบบ" : "ครู"}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-gray-600 dark:text-gray-300">{u.role === "teacher" ? u.department : "-"}</td>
-                                            <td className="p-4 flex justify-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={function () { setEditUser(u); setModalOpen(true); }}
-                                                    className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg"
-                                                ><Icon name="edit-2" size={18} /></button>
-                                                <button
-                                                    onClick={function () { handleDelete(u.id); }}
-                                                    disabled={deletingId === u.id}
-                                                    className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50"
-                                                >
-                                                    {deletingId === u.id ? <Icon name="loader-2" size={18} className="animate-spin" /> : <Icon name="trash-2" size={18} />}
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                    {modalOpen && (
-                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-                            <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl w-full max-w-lg shadow-2xl transform transition-all scale-100">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="font-bold text-2xl dark:text-white flex items-center gap-2">
-                                        <Icon name={editUser ? "edit" : "user-plus"} className="text-primary" /> {editUser ? "แก้ไขผู้ใช้งาน" : "เพิ่มผู้ใช้งานใหม่"}
-                                    </h3>
-                                    <button onClick={function () { setModalOpen(false); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><Icon name="x" size={24} /></button>
-                                </div>
-                                <form onSubmit={handleSave} className="space-y-4">
-                                    <div className="space-y-1">
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ชื่อผู้ใช้ (Username)</label>
+                <React.Fragment>
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">👤 จัดการผู้ใช้งาน</h2>
+                            <button
+                                onClick={function () { setEditUser(null); setModalOpen(true); }}
+                                className="bg-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 transition-all font-medium"
+                            >
+                                <Icon name="plus" size={20} /> เพิ่มผู้ใช้งาน
+                            </button>
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                            {/* Filters */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 pt-4 pb-2">
+                                <div className="flex items-center gap-2 w-full md:w-72">
+                                    <div className="relative flex-1">
+                                        <span className="absolute inset-y-0 left-3 flex items-center text-gray-400">
+                                            <Icon name="search" size={16} />
+                                        </span>
                                         <input
-                                            name="username"
-                                            className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
-                                            required
-                                            value={form.username}
-                                            onChange={handleChange}
-                                            autoComplete="off"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">รหัสผ่าน (Password)</label>
-                                        <input
-                                            name="password"
                                             type="text"
-                                            className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
-                                            required
-                                            value={form.password}
-                                            onChange={handleChange}
-                                            autoComplete="off"
+                                            value={searchTerm}
+                                            onChange={handleSearchChange}
+                                            placeholder="ค้นหาด้วยชื่อผู้ใช้ / ชื่อ / ตำแหน่ง"
+                                            className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm focus:ring-2 focus:ring-primary outline-none text-gray-700 dark:text-gray-100"
                                         />
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ชื่อ-นามสกุล</label>
-                                        <input
-                                            name="name"
-                                            className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
-                                            required
-                                            value={form.name}
-                                            onChange={handleChange}
-                                        />
+                                </div>
+                                <div className="flex items-center justify-between md:justify-end gap-3 text-xs text-gray-500 dark:text-gray-400">
+                                    <div>
+                                        แสดง {totalItems === 0 ? 0 : startIndex + 1} - {Math.min(startIndex + pageSize, totalItems)} จาก {totalItems} รายการ
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">สิทธิ์</label>
+                                    <div className="flex items-center gap-1">
+                                        <span>แถวต่อหน้า</span>
                                         <select
-                                            name="role"
-                                            className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
-                                            value={form.role}
-                                            onChange={handleChange}
+                                            value={pageSize}
+                                            onChange={handleChangePageSize}
+                                            className="border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 rounded-lg px-2 py-1 text-xs focus:ring-1 focus:ring-primary outline-none"
                                         >
-                                            <option value="teacher">ครู</option>
-                                            <option value="admin">ผู้ดูแลระบบ</option>
+                                            <option value={10}>10</option>
+                                            <option value={20}>20</option>
+                                            <option value={50}>50</option>
                                         </select>
                                     </div>
-                                    {form.role === "teacher" && (
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b dark:border-gray-700">
+                                        <tr>
+                                            <th className="p-4 pl-6 font-semibold">ชื่อผู้ใช้</th>
+                                            <th className="p-4 font-semibold">รหัสผ่าน</th>
+                                            <th className="p-4 font-semibold">ชื่อ-นามสกุล</th>
+                                            <th className="p-4 font-semibold">สิทธิ์</th>
+                                            <th className="p-4 font-semibold">ตำแหน่ง</th>
+                                            <th className="p-4 font-semibold text-center">จัดการ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                        {pagedUsers.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="6" className="p-6 text-center text-gray-400">ไม่พบข้อมูลที่ค้นหา</td>
+                                            </tr>
+                                        ) : (
+                                            pagedUsers.map(function (u) {
+                                                return (
+                                                    <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
+                                                        <td className="p-4 pl-6 font-mono text-gray-700 dark:text-gray-100">{u.username}</td>
+                                                        <td className="p-4 font-mono text-gray-400">{u.password}</td>
+                                                        <td className="p-4 text-gray-800 dark:text-gray-200">{u.name}</td>
+                                                        <td className="p-4">
+                                                            <span className={
+                                                                u.role === "admin"
+                                                                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-3 py-1 rounded-full text-xs font-bold"
+                                                                    : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-3 py-1 rounded-full text-xs font-bold"
+                                                            }>
+                                                                {u.role === "admin" ? "ผู้ดูแลระบบ" : "ครู"}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-4 text-gray-600 dark:text-gray-300">{u.role === "teacher" ? u.department : "-"}</td>
+                                                        <td className="p-4 flex justify-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
+                                                            <button
+                                                                onClick={function () { setEditUser(u); setModalOpen(true); }}
+                                                                className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg"
+                                                            ><Icon name="edit-2" size={18} /></button>
+                                                            <button
+                                                                onClick={function () { handleDelete(u.id); }}
+                                                                disabled={deletingId === u.id}
+                                                                className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50"
+                                                            >
+                                                                {deletingId === u.id ? <Icon name="loader-2" size={18} className="animate-spin" /> : <Icon name="trash-2" size={18} />}
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Pagination Controls */}
+                            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+                                <div>
+                                    หน้า {currentPage} / {totalPages}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1}
+                                        className="px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 disabled:opacity-40 flex items-center gap-1"
+                                    >
+                                        <Icon name="chevron-left" size={14} /> ก่อนหน้า
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages}
+                                        className="px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 disabled:opacity-40 flex items-center gap-1"
+                                    >
+                                        ถัดไป <Icon name="chevron-right" size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {
+                        modalOpen && (
+                            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+                                <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl w-full max-w-lg shadow-2xl transform transition-all scale-100">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className="font-bold text-2xl dark:text-white flex items-center gap-2">
+                                            <Icon name={editUser ? "edit" : "user-plus"} className="text-primary" /> {editUser ? "แก้ไขผู้ใช้งาน" : "เพิ่มผู้ใช้งานใหม่"}
+                                        </h3>
+                                        <button onClick={function () { setModalOpen(false); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><Icon name="x" size={24} /></button>
+                                    </div>
+                                    <form onSubmit={handleSave} className="space-y-4">
                                         <div className="space-y-1">
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ตำแหน่ง / แผนก</label>
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ชื่อผู้ใช้ (Username)</label>
                                             <input
-                                                name="department"
+                                                name="username"
                                                 className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
-                                                required={form.role === "teacher"}
-                                                value={form.department}
+                                                required
+                                                value={form.username}
+                                                onChange={handleChange}
+                                                autoComplete="off"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">รหัสผ่าน (Password)</label>
+                                            <input
+                                                name="password"
+                                                type="text"
+                                                className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                                                required
+                                                value={form.password}
+                                                onChange={handleChange}
+                                                autoComplete="off"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ชื่อ-นามสกุล</label>
+                                            <input
+                                                name="name"
+                                                className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                                                required
+                                                value={form.name}
                                                 onChange={handleChange}
                                             />
                                         </div>
-                                    )}
-                                    <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
-                                        <button type="button" onClick={function () { setModalOpen(false); }} disabled={isSubmitting} className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors disabled:opacity-50">ยกเลิก</button>
-                                        <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 bg-primary hover:bg-primaryHover text-white rounded-xl shadow-lg shadow-primary/30 font-medium transition-all flex items-center gap-2 disabled:opacity-50">
-                                            {isSubmitting && <Icon name="loader-2" size={18} className="animate-spin" />}
-                                            {isSubmitting ? 'กำลังบันทึก...' : 'บันทึก'}
-                                        </button>
-                                    </div>
-                                </form>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">สิทธิ์</label>
+                                            <select
+                                                name="role"
+                                                className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                                                value={form.role}
+                                                onChange={handleChange}
+                                            >
+                                                <option value="teacher">ครู</option>
+                                                <option value="admin">ผู้ดูแลระบบ</option>
+                                            </select>
+                                        </div>
+                                        {form.role === "teacher" && (
+                                            <div className="space-y-1">
+                                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ตำแหน่ง / แผนก</label>
+                                                <input
+                                                    name="department"
+                                                    className="w-full border border-gray-200 dark:border-gray-600 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-primary outline-none transition-all"
+                                                    required={form.role === "teacher"}
+                                                    value={form.department}
+                                                    onChange={handleChange}
+                                                />
+                                            </div>
+                                        )}
+                                        <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
+                                            <button type="button" onClick={function () { setModalOpen(false); }} disabled={isSubmitting} className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors disabled:opacity-50">ยกเลิก</button>
+                                            <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 bg-primary hover:bg-primaryHover text-white rounded-xl shadow-lg shadow-primary/30 font-medium transition-all flex items-center gap-2 disabled:opacity-50">
+                                                {isSubmitting && <Icon name="loader-2" size={18} className="animate-spin" />}
+                                                {isSubmitting ? 'กำลังบันทึก...' : 'บันทึก'}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        )
+                    }
+                </React.Fragment>
             );
         }
 
